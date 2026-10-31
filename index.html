@@ -383,6 +383,32 @@
                     forecastRecords.textContent = Math.round(expected).toLocaleString();
                 }
 
+                const MIN_ALL_MONTHS_RECORDS = 20;
+
+                // "All Months": merge monthly rows into one record per Area + Crime Type + Cluster ID,
+                // summing counts (centroid = count-weighted mean) and keeping clusters with >= 20 total records.
+                function aggregateClusters(rows) {
+                    const groups = {};
+                    rows.forEach(function (r) {
+                        const g = groups[r.cluster] || (groups[r.cluster] = {
+                            area: r.area, crime: r.crime, cluster: r.cluster, color: r.color,
+                            count: 0, latSum: 0, lonSum: 0, months: 0
+                        });
+                        g.count += r.count;
+                        g.latSum += r.lat * r.count;
+                        g.lonSum += r.lon * r.count;
+                        g.months += 1;
+                    });
+                    return Object.keys(groups).map(function (k) {
+                        const g = groups[k];
+                        return {
+                            area: g.area, crime: g.crime, cluster: g.cluster, color: g.color,
+                            count: g.count, lat: g.latSum / g.count, lon: g.lonSum / g.count,
+                            month: "All months (" + g.months + " with records)"
+                        };
+                    }).filter(function (g) { return g.count >= MIN_ALL_MONTHS_RECORDS; });
+                }
+
                 function applyFilters() {
                     const selectedArea = areaSelect.value;
                     const selectedCrime = crimeSelect.value;
@@ -390,11 +416,15 @@
 
                     markerLayer.clearLayers();
 
-                    const filtered = (showHistorical.checked ? mapData : []).filter(function (item) {
+                    let filtered = (showHistorical.checked ? mapData : []).filter(function (item) {
                         return (selectedArea === "ALL" || item.area === selectedArea)
                             && (selectedCrime === "ALL" || item.crime === selectedCrime)
                             && (selectedMonth === "ALL" || item.month === selectedMonth);
                     });
+
+                    if (selectedMonth === "ALL") {
+                        filtered = aggregateClusters(filtered);
+                    }
 
                     filtered.forEach(function (item) {
                         const radius = Math.max(
